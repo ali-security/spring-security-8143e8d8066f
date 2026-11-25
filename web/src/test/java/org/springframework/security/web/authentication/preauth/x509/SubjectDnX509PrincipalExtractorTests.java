@@ -44,4 +44,11 @@ public class SubjectDnX509PrincipalExtractorTests {
         extractor.setSubjectDnRegex("shoeSize=(.*?),");
         extractor.extractPrincipal(X509TestUtils.buildTestCertificate());
     }
+
+    // gh-19254
+    @Test
+    public void defaultCNPatternReturnsMostSpecificPrincipalWhenMultipleCns() throws Exception {
+        Object principal = extractor.extractPrincipal(X509TestUtils.buildTestCertificateWithMultipleCns());
+        assertEquals("alice", principal);
+    }
 }
