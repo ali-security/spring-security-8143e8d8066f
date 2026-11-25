@@ -20,6 +20,7 @@ import javax.servlet.http.HttpServletResponse;
  * @author Luke Taylor
  */
 public class DefaultHttpFirewall implements HttpFirewall {
+    private boolean allowUrlEncodedSlash;
 
     public FirewalledRequest getFirewalledRequest(HttpServletRequest request) throws RequestRejectedException {
         FirewalledRequest fwr = new RequestWrapper(request);
@@ -29,11 +30,46 @@ public class DefaultHttpFirewall implements HttpFirewall {
                 (fwr.getPathInfo() != null ? fwr.getPathInfo() : ""));
         }
 
+        String requestURI = fwr.getRequestURI();
+        if (containsInvalidUrlEncodedSlash(requestURI)) {
+            throw new RequestRejectedException("The requestURI cannot contain encoded slash. Got " + requestURI);
+        }
+
         return fwr;
     }
 
     public HttpServletResponse getFirewalledResponse(HttpServletResponse response) {
         return response;
+    }
+
+    /**
+     * <p>
+     * Sets if the application should allow a URL encoded slash character.
+     * </p>
+     * <p>
+     * If true (default is false), a URL encoded slash will be allowed in the
+     * URL. Allowing encoded slashes can cause security vulnerabilities in some
+     * situations depending on how the container constructs the
+     * HttpServletRequest.
+     * </p>
+     *
+     * @param allowUrlEncodedSlash
+     *            the new value (default false)
+     */
+    public void setAllowUrlEncodedSlash(boolean allowUrlEncodedSlash) {
+        this.allowUrlEncodedSlash = allowUrlEncodedSlash;
+    }
+
+    private boolean containsInvalidUrlEncodedSlash(String uri) {
+        if (this.allowUrlEncodedSlash || uri == null) {
+            return false;
+        }
+
+        if (uri.contains("%2f") || uri.contains("%2F")) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
