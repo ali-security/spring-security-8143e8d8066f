@@ -1,0 +1,84 @@
+name: seal-build
+
+# Authored for the sealed build: Spring Security 3.0.x has no GitHub Actions CI
+# (its <ciManagement> points at SpringSource's retired Bamboo). This mirrors the
+# project's own Maven build: root pom.xml reactor, surefire **/*Tests.class,
+# compiled with source/target 1.5 on a JDK 6 (reference jar Build-Jdk 1.6.0_22).
+on:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Surefire -Dtest selector; empty runs the full core+web suite"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MAVEN_OPTS: "-Xmx2g -XX:MaxPermSize=512m"
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-java's Zulu resolver no longer lists Java 6; fetch the last
+      # Zulu 6 build (6u119) straight from Azul's CDN instead.
+      - name: Set up JDK 6
+        run: |
+          curl -fsSL https://cdn.azul.com/zulu/bin/zulu6.22.0.3-jdk6.0.119-linux_x64.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP"
+          JDK="$RUNNER_TEMP/zulu6.22.0.3-jdk6.0.119-linux_x64"
+          echo "JAVA_HOME=$JDK" >> "$GITHUB_ENV"
+          echo "$JDK/bin" >> "$GITHUB_PATH"
+
+      - name: Install Maven 3.2.5 (last Maven line that runs on JDK 6)
+        run: |
+          curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.2.5/binaries/apache-maven-3.2.5-bin.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-3.2.5/bin" >> "$GITHUB_PATH"
+
+      - name: Maven settings (JDK 6 has no TLSv1.2 -> HTTP Central mirror)
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>central-http</id>
+                <mirrorOf>*</mirrorOf>
+                <url>http://insecure.repo1.maven.org/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+          java -version
+          mvn -version
+
+      - name: Build and test (core + web)
+        run: |
+          if [ -n "${{ inputs.test-filter }}" ]; then
+            mvn clean package -B -e -pl web -am \
+              -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -Dgpg.skip=true \
+              -Dtest=${{ inputs.test-filter }} -DfailIfNoTests=false
+          else
+            mvn clean package -B -e -pl web -am \
+              -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -Dgpg.skip=true
+          fi
+
+      - name: Test summary
+        run: |
+          for m in core web; do
+            find "$m/target/surefire-reports" -name '*.txt' -type f -print0 \
+              | xargs -0 cat \
+              | awk -v mod="$m" '/^Tests run:/ { gsub(",", ""); r+=$3; f+=$5; e+=$7; s+=$9 }
+                  END { printf "MODULE %s: Tests run: %d, Passed: %d, Failures: %d, Errors: %d, Skipped: %d\n", mod, r, r-f-e-s, f, e, s }'
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring-security-web
+          path: |
+            web/target/spring-security-web-3.0.5.RELEASE.jar
+            web/target/spring-security-web-3.0.5.RELEASE-tests.jar
+          if-no-files-found: error
