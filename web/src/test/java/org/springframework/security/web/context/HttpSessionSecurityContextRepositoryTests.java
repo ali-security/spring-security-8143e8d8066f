@@ -17,6 +17,7 @@ import org.springframework.security.web.context.SaveContextOnUpdateOrErrorRespon
 
 public class HttpSessionSecurityContextRepositoryTests {
     private final TestingAuthenticationToken testToken = new TestingAuthenticationToken("someone", "passwd", "ROLE_A");
+    private final TestingAuthenticationToken elevatedToken = new TestingAuthenticationToken("someone", "passwd", "ROLE_ADMIN");
 
     @Test(expected=IllegalArgumentException.class)
     @Deprecated
@@ -132,6 +133,61 @@ public class HttpSessionSecurityContextRepositoryTests {
         repo.saveContext(SecurityContextHolder.getContext(), holder.getRequest(), holder.getResponse());
         // Check it's still the same
         assertEquals(SecurityContextHolder.getContext(), request.getSession().getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
+    }
+
+    // The response wrapper may already have stored a context because the response was committed
+    // during the request. A context which is changed again after that must still be stored.
+    @Test
+    public void changedContextIsStoredAfterEarlySaveCausedByRedirect() throws Exception {
+        HttpSessionSecurityContextRepository repo = new HttpSessionSecurityContextRepository();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        HttpRequestResponseHolder holder = new HttpRequestResponseHolder(request, response);
+        SecurityContextHolder.setContext(repo.loadContext(holder));
+        // The application temporarily elevates the privileges and the response gets committed
+        SecurityContextHolder.getContext().setAuthentication(elevatedToken);
+        holder.getResponse().sendRedirect("/doesntmatter");
+        assertTrue(((SaveContextOnUpdateOrErrorResponseWrapper)holder.getResponse()).isContextSaved());
+        assertEquals(elevatedToken, ((SecurityContext)request.getSession().getAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication());
+        // The context is changed a second time before the persistence filter has finished
+        SecurityContext secondContext = SecurityContextHolder.createEmptyContext();
+        secondContext.setAuthentication(testToken);
+        SecurityContextHolder.setContext(secondContext);
+        repo.saveContext(secondContext, holder.getRequest(), holder.getResponse());
+        assertSame(secondContext, request.getSession().getAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
+        SecurityContextHolder.clearContext();
+    }
+
+    // Dropping the elevated privileges again must overwrite the context which was stored early,
+    // even though the restored context is unchanged compared to the start of the request.
+    @Test
+    public void originalContextIsRestoredAfterEarlySaveOfElevatedContext() throws Exception {
+        HttpSessionSecurityContextRepository repo = new HttpSessionSecurityContextRepository();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        SecurityContext original = SecurityContextHolder.createEmptyContext();
+        original.setAuthentication(testToken);
+        request.getSession().setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, original);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        HttpRequestResponseHolder holder = new HttpRequestResponseHolder(request, response);
+        SecurityContextHolder.setContext(repo.loadContext(holder));
+        assertEquals(testToken, SecurityContextHolder.getContext().getAuthentication());
+        // The application temporarily elevates the privileges and the response gets committed
+        SecurityContext elevatedContext = SecurityContextHolder.createEmptyContext();
+        elevatedContext.setAuthentication(elevatedToken);
+        SecurityContextHolder.setContext(elevatedContext);
+        holder.getResponse().sendRedirect("/doesntmatter");
+        assertSame(elevatedContext, request.getSession().getAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
+        // The elevated privileges are dropped before the persistence filter has finished
+        SecurityContext restoredContext = SecurityContextHolder.createEmptyContext();
+        restoredContext.setAuthentication(testToken);
+        SecurityContextHolder.setContext(restoredContext);
+        repo.saveContext(restoredContext, holder.getRequest(), holder.getResponse());
+        assertSame(restoredContext, request.getSession().getAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY));
+        SecurityContextHolder.clearContext();
     }
 
     @Test

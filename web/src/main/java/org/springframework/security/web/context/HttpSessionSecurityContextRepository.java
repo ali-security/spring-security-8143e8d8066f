@@ -100,12 +100,7 @@ public class HttpSessionSecurityContextRepository implements SecurityContextRepo
 
     public void saveContext(SecurityContext context, HttpServletRequest request, HttpServletResponse response) {
         SaveContextOnUpdateOrErrorResponseWrapper responseWrapper = (SaveContextOnUpdateOrErrorResponseWrapper)response;
-        // saveContext() might already be called by the response wrapper
-        // if something in the chain called sendError() or sendRedirect(). This ensures we only call it
-        // once per request.
-        if (!responseWrapper.isContextSaved() ) {
-            responseWrapper.saveContext(context);
-        }
+        responseWrapper.saveContext(context);
     }
 
     public boolean containsContext(HttpServletRequest request) {
@@ -295,6 +290,7 @@ public class HttpSessionSecurityContextRepository implements SecurityContextRepo
         private HttpServletRequest request;
         private boolean httpSessionExistedAtStartOfRequest;
         private int contextHashBeforeChainExecution;
+        private boolean isSaveContextInvoked;
 
         /**
          * Takes the parameters required to call <code>saveContext()</code> successfully in
@@ -341,6 +337,7 @@ public class HttpSessionSecurityContextRepository implements SecurityContextRepo
                 if (httpSession != null) {
                     // SEC-1587 A non-anonymous context may still be in the session
                     httpSession.removeAttribute(SPRING_SECURITY_CONTEXT_KEY);
+                    this.isSaveContextInvoked = true;
                 }
                 return;
             }
@@ -352,10 +349,11 @@ public class HttpSessionSecurityContextRepository implements SecurityContextRepo
             // If HttpSession exists, store current SecurityContextHolder contents but only if
             // the SecurityContext has actually changed (see JIRA SEC-37)
             // We also check that the session contains the context, in case a new session has been created (SEC-1561)
-            if (httpSession != null && (context.hashCode() != contextHashBeforeChainExecution ||
+            if (httpSession != null && (this.isSaveContextInvoked ||
+                    context.hashCode() != contextHashBeforeChainExecution ||
                     httpSession.getAttribute(SPRING_SECURITY_CONTEXT_KEY) == null)) {
                 httpSession.setAttribute(SPRING_SECURITY_CONTEXT_KEY, context);
-
+                this.isSaveContextInvoked = true;
                 if (logger.isDebugEnabled()) {
                     logger.debug("SecurityContext stored to HttpSession: '" + context + "'");
                 }
