@@ -102,6 +102,18 @@ public class SwitchUserFilterTests {
         assertTrue(filter.requiresExitUser(request));
     }
 
+    // gh-4249
+    @Test
+    public void requiresExitUserWhenEndsWithThenDoesNotMatch() {
+        SwitchUserFilter filter = new SwitchUserFilter();
+        filter.setExitUserUrl("/j_spring_security_my_exit_user");
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/foo/bar/j_spring_security_my_exit_user");
+
+        assertFalse(filter.requiresExitUser(request));
+    }
+
     @Test
     public void requiresSwitchMatchesCorrectly() {
         SwitchUserFilter filter = new SwitchUserFilter();
@@ -111,6 +123,18 @@ public class SwitchUserFilterTests {
         request.setRequestURI("/j_spring_security_my_switch_user");
 
         assertTrue(filter.requiresSwitchUser(request));
+    }
+
+    // gh-4249
+    @Test
+    public void requiresSwitchUserWhenEndsWithThenDoesNotMatch() {
+        SwitchUserFilter filter = new SwitchUserFilter();
+        filter.setSwitchUserUrl("/j_spring_security_my_switch_user");
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/foo/bar/j_spring_security_my_switch_user");
+
+        assertFalse(filter.requiresSwitchUser(request));
     }
 
     @Test(expected=UsernameNotFoundException.class)
@@ -209,6 +233,7 @@ public class SwitchUserFilterTests {
         SwitchUserFilter filter = new SwitchUserFilter();
         filter.setSwitchUserUrl("/j_spring_security_switch_user");
 
+        request.setContextPath("/webapp");
         request.setRequestURI("/webapp/j_spring_security_switch_user;jsessionid=8JHDUD723J8");
         assertTrue(filter.requiresSwitchUser(request));
     }
@@ -332,6 +357,7 @@ public class SwitchUserFilterTests {
 
         // http request
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setContextPath("/webapp");
         request.setRequestURI("/webapp/j_spring_security_switch_user");
         request.addParameter(SwitchUserFilter.SPRING_SECURITY_SWITCH_USERNAME_KEY, "jacklord");
 

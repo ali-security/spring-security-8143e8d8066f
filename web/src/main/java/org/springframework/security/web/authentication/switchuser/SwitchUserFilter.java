@@ -349,7 +349,10 @@ public class SwitchUserFilter extends GenericFilterBean implements ApplicationEv
     protected boolean requiresExitUser(HttpServletRequest request) {
         String uri = stripUri(request);
 
-        return uri.endsWith(request.getContextPath() + exitUserUrl);
+        // gh-4249: match the exact URL rather than any URI that merely ends with the
+        // configured value, otherwise a request such as "/foo/bar" + exitUserUrl would
+        // trigger exit-user processing on a URL that was never intended to be secured.
+        return uri.equals(request.getContextPath() + exitUserUrl);
     }
 
     /**
@@ -364,7 +367,10 @@ public class SwitchUserFilter extends GenericFilterBean implements ApplicationEv
     protected boolean requiresSwitchUser(HttpServletRequest request) {
         String uri = stripUri(request);
 
-        return uri.endsWith(request.getContextPath() + switchUserUrl);
+        // gh-4249: match the exact URL rather than any URI that merely ends with the
+        // configured value, otherwise a request such as "/foo/bar" + switchUserUrl would
+        // trigger user switching on a URL that was never intended to be secured.
+        return uri.equals(request.getContextPath() + switchUserUrl);
     }
 
     public void setApplicationEventPublisher(ApplicationEventPublisher eventPublisher)
