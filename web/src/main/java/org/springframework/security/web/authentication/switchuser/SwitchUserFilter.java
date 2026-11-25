@@ -82,6 +82,8 @@ import org.springframework.web.filter.GenericFilterBean;
  * To 'exit' from a user context, the user will then need to access a URL (see <code>exitUserUrl</code>)  that
  * will switch back to the original user as identified by the <code>ROLE_PREVIOUS_ADMINISTRATOR</code>.
  * <p>
+ * Both the <code>switchUserUrl</code> and the <code>exitUserUrl</code> are only processed for HTTP POST requests.
+ * <p>
  * To configure the Switch User Processing Filter, create a bean definition for the Switch User processing
  * filter and add to the filterChainProxy. Note that the filter must come <b>after</b> the
  * <tt>FilterSecurityInteceptor</tt> in the chain, in order to apply the correct constraints to the <tt>switchUserUrl</tt>.
@@ -352,7 +354,9 @@ public class SwitchUserFilter extends GenericFilterBean implements ApplicationEv
         // gh-4249: match the exact URL rather than any URI that merely ends with the
         // configured value, otherwise a request such as "/foo/bar" + exitUserUrl would
         // trigger exit-user processing on a URL that was never intended to be secured.
-        return uri.equals(request.getContextPath() + exitUserUrl);
+        // gh-4183: only a POST may exit the user, so a forged GET (e.g. an image link)
+        // cannot trigger the switch back (CSRF).
+        return isPost(request) && uri.equals(request.getContextPath() + exitUserUrl);
     }
 
     /**
@@ -370,7 +374,13 @@ public class SwitchUserFilter extends GenericFilterBean implements ApplicationEv
         // gh-4249: match the exact URL rather than any URI that merely ends with the
         // configured value, otherwise a request such as "/foo/bar" + switchUserUrl would
         // trigger user switching on a URL that was never intended to be secured.
-        return uri.equals(request.getContextPath() + switchUserUrl);
+        // gh-4183: only a POST may switch the user, so a forged GET (e.g. an image link)
+        // cannot trigger the switch (CSRF).
+        return isPost(request) && uri.equals(request.getContextPath() + switchUserUrl);
+    }
+
+    private static boolean isPost(HttpServletRequest request) {
+        return "POST".equals(request.getMethod());
     }
 
     public void setApplicationEventPublisher(ApplicationEventPublisher eventPublisher)

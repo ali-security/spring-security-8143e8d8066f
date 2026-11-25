@@ -76,6 +76,7 @@ public class SwitchUserFilterTests {
         request.setScheme("http");
         request.setServerName("localhost");
         request.setRequestURI("/j_spring_security_switch_user");
+        request.setMethod("POST");
 
         return request;
     }
@@ -98,6 +99,7 @@ public class SwitchUserFilterTests {
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRequestURI("/j_spring_security_my_exit_user");
+        request.setMethod("POST");
 
         assertTrue(filter.requiresExitUser(request));
     }
@@ -110,6 +112,21 @@ public class SwitchUserFilterTests {
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRequestURI("/foo/bar/j_spring_security_my_exit_user");
+        request.setMethod("POST");
+
+        assertFalse(filter.requiresExitUser(request));
+    }
+
+    @Test
+    // gh-4183
+    public void requiresExitUserWhenGetThenDoesNotMatch() {
+        SwitchUserFilter filter = new SwitchUserFilter();
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setScheme("http");
+        request.setServerName("localhost");
+        request.setRequestURI("/j_spring_security_exit_user");
+        request.setMethod("GET");
 
         assertFalse(filter.requiresExitUser(request));
     }
@@ -121,6 +138,7 @@ public class SwitchUserFilterTests {
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRequestURI("/j_spring_security_my_switch_user");
+        request.setMethod("POST");
 
         assertTrue(filter.requiresSwitchUser(request));
     }
@@ -133,8 +151,78 @@ public class SwitchUserFilterTests {
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRequestURI("/foo/bar/j_spring_security_my_switch_user");
+        request.setMethod("POST");
 
         assertFalse(filter.requiresSwitchUser(request));
+    }
+
+    @Test
+    // gh-4183
+    public void requiresSwitchUserWhenGetThenDoesNotMatch() {
+        SwitchUserFilter filter = new SwitchUserFilter();
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setScheme("http");
+        request.setServerName("localhost");
+        request.setRequestURI("/j_spring_security_switch_user");
+        request.setMethod("GET");
+
+        assertFalse(filter.requiresSwitchUser(request));
+    }
+
+    // gh-4183
+    @Test
+    public void switchUserWhenGetThenDoesNotSwitch() throws Exception {
+        // a forged cross-site GET (e.g. an <img> tag) must not switch the logged-in user
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("dano", "hawaii50");
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        MockHttpServletRequest request = createMockSwitchRequest();
+        request.setMethod("GET");
+        request.addParameter(SwitchUserFilter.SPRING_SECURITY_SWITCH_USERNAME_KEY, "jacklord");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        SwitchUserFilter filter = new SwitchUserFilter();
+        filter.setUserDetailsService(new MockUserDetailsService());
+        filter.setTargetUrl("/target");
+        filter.afterPropertiesSet();
+
+        FilterChain chain = mock(FilterChain.class);
+        filter.doFilter(request, response, chain);
+
+        verify(chain).doFilter(request, response);
+        assertNull(response.getRedirectedUrl());
+        assertSame(auth, SecurityContextHolder.getContext().getAuthentication());
+    }
+
+    // gh-4183
+    @Test
+    public void exitUserWhenGetThenDoesNotExit() throws Exception {
+        // a forged cross-site GET must not switch the impersonating user back
+        UsernamePasswordAuthenticationToken source = new UsernamePasswordAuthenticationToken("dano", "hawaii50", ROLES_12);
+        List<GrantedAuthority> adminAuths = new ArrayList<GrantedAuthority>();
+        adminAuths.addAll(ROLES_12);
+        adminAuths.add(new SwitchUserGrantedAuthority("PREVIOUS_ADMINISTRATOR", source));
+        UsernamePasswordAuthenticationToken admin =
+            new UsernamePasswordAuthenticationToken("jacklord", "hawaii50", adminAuths);
+        SecurityContextHolder.getContext().setAuthentication(admin);
+
+        MockHttpServletRequest request = createMockSwitchRequest();
+        request.setRequestURI("/j_spring_security_exit_user");
+        request.setMethod("GET");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        SwitchUserFilter filter = new SwitchUserFilter();
+        filter.setUserDetailsService(new MockUserDetailsService());
+        filter.setTargetUrl("/target");
+        filter.afterPropertiesSet();
+
+        FilterChain chain = mock(FilterChain.class);
+        filter.doFilter(request, response, chain);
+
+        verify(chain).doFilter(request, response);
+        assertNull(response.getRedirectedUrl());
+        assertSame(admin, SecurityContextHolder.getContext().getAuthentication());
     }
 
     @Test(expected=UsernameNotFoundException.class)
@@ -177,6 +265,7 @@ public class SwitchUserFilterTests {
     public void switchToLockedAccountCausesRedirectToSwitchFailureUrl() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setRequestURI("/j_spring_security_switch_user");
+        request.setMethod("POST");
         request.addParameter(SwitchUserFilter.SPRING_SECURITY_SWITCH_USERNAME_KEY, "mcgarrett");
         MockHttpServletResponse response = new MockHttpServletResponse();
         SwitchUserFilter filter = new SwitchUserFilter();
@@ -359,6 +448,7 @@ public class SwitchUserFilterTests {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setContextPath("/webapp");
         request.setRequestURI("/webapp/j_spring_security_switch_user");
+        request.setMethod("POST");
         request.addParameter(SwitchUserFilter.SPRING_SECURITY_SWITCH_USERNAME_KEY, "jacklord");
 
         // http response
