@@ -1,6 +1,7 @@
 package org.springframework.security.web;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.*;
 
 import org.junit.Before;
@@ -11,6 +12,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.web.firewall.FirewalledRequest;
 import org.springframework.security.web.firewall.HttpFirewall;
+import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.security.web.util.RegexUrlPathMatcher;
 
 import javax.servlet.Filter;
@@ -113,6 +115,47 @@ public class FilterChainProxyTests {
         when(fw.getFirewalledRequest(request)).thenReturn(fwr);
         fcp.doFilter(request, response, chain);
         verify(fwr).reset();
+    }
+
+    // CVE-2018-1199: path parameters must not be silently accepted by the default firewall
+    @Test(expected = RequestRejectedException.class)
+    public void defaultFirewallRejectsPathParameterInServletPath() throws Exception {
+        request.setServletPath("/match;x=user.html");
+        fcp.doFilter(request, response, chain);
+    }
+
+    @Test(expected = RequestRejectedException.class)
+    public void defaultFirewallRejectsPathParameterInPathInfo() throws Exception {
+        request.setServletPath("/match");
+        request.setPathInfo("/admin.html;x=user.html");
+        fcp.doFilter(request, response, chain);
+    }
+
+    // CVE-2018-1199: an encoded traversal must not let a request skip the secured filter chain
+    @Test
+    public void defaultFirewallRejectsEncodedPeriodTraversalBypassingSecuredChain() throws Exception {
+        request.setRequestURI("/nomatch/%2e%2e/match");
+        request.setServletPath("/nomatch/%2e%2e/match");
+        try {
+            fcp.doFilter(request, response, chain);
+            fail("Expected RequestRejectedException");
+        } catch (RequestRejectedException expected) {
+        }
+        verifyZeroInteractions(filter);
+        verifyZeroInteractions(chain);
+    }
+
+    @Test
+    public void defaultFirewallRejectsBackslashBypassingSecuredChain() throws Exception {
+        request.setRequestURI("/nomatch\\..\\match");
+        request.setServletPath("/nomatch\\..\\match");
+        try {
+            fcp.doFilter(request, response, chain);
+            fail("Expected RequestRejectedException");
+        } catch (RequestRejectedException expected) {
+        }
+        verifyZeroInteractions(filter);
+        verifyZeroInteractions(chain);
     }
 
     // CVE-2022-22978: a path containing a line terminator must not escape a regex filter chain

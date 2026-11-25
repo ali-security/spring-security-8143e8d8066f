@@ -18,9 +18,9 @@ package org.springframework.security.web;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.security.web.access.intercept.FilterInvocationSecurityMetadataSource;
-import org.springframework.security.web.firewall.DefaultHttpFirewall;
 import org.springframework.security.web.firewall.FirewalledRequest;
 import org.springframework.security.web.firewall.HttpFirewall;
+import org.springframework.security.web.firewall.StrictHttpFirewall;
 import org.springframework.security.web.util.AntUrlPathMatcher;
 import org.springframework.security.web.util.UrlMatcher;
 import org.springframework.security.web.util.UrlUtils;
@@ -92,7 +92,7 @@ import java.util.*;
  * <h3>Request Firewalling</h3>
  *
  * An {@link HttpFirewall} instance is used to validate incoming requests and create a wrapped request which provides
- * consistent path values for matching against. See {@link DefaultHttpFirewall}, for more information on the type of
+ * consistent path values for matching against. See {@link StrictHttpFirewall}, for more information on the type of
  * attacks which the default implementation protects against. A custom implementation can be injected to provide
  * stricter control over the request contents or if an application needs to support certain types of request which
  * are rejected by default.
@@ -133,7 +133,7 @@ public class FilterChainProxy extends GenericFilterBean {
     private Map<Object, List<Filter>> filterChainMap;
     private UrlMatcher matcher = new AntUrlPathMatcher();
     private boolean stripQueryStringFromUrls = true;
-    private HttpFirewall firewall = new DefaultHttpFirewall();
+    private HttpFirewall firewall = new StrictHttpFirewall();
     private FilterChainValidator filterChainValidator = new NullFilterChainValidator();
 
     //~ Methods ========================================================================================================
