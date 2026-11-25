@@ -11,6 +11,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.web.firewall.FirewalledRequest;
 import org.springframework.security.web.firewall.HttpFirewall;
+import org.springframework.security.web.util.RegexUrlPathMatcher;
 
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
@@ -114,4 +115,17 @@ public class FilterChainProxyTests {
         verify(fwr).reset();
     }
 
+    // CVE-2022-22978: a path containing a line terminator must not escape a regex filter chain
+    @Test
+    public void regexMatchedChainIsStillFoundWhenUrlContainsLineTerminator() throws Exception {
+        FilterChainProxy proxy = new FilterChainProxy();
+        proxy.setMatcher(new RegexUrlPathMatcher());
+        LinkedHashMap map = new LinkedHashMap();
+        map.put("/secure/.*", Arrays.asList(filter));
+        proxy.setFilterChainMap(map);
+
+        assertEquals(1, proxy.getFilters("/secure/blah\n").size());
+        assertEquals(1, proxy.getFilters("/secure/blah\r").size());
+        assertEquals(1, proxy.getFilters("/secure/blah\r\n/more").size());
+    }
 }

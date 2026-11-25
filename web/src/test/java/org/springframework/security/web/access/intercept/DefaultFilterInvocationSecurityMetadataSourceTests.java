@@ -32,6 +32,7 @@ import org.springframework.security.web.FilterInvocation;
 import org.springframework.security.web.access.intercept.DefaultFilterInvocationSecurityMetadataSource;
 import org.springframework.security.web.access.intercept.RequestKey;
 import org.springframework.security.web.util.AntUrlPathMatcher;
+import org.springframework.security.web.util.RegexUrlPathMatcher;
 
 /**
  * Tests parts of {@link DefaultFilterInvocationSecurityMetadataSource} not tested by {@link
@@ -210,6 +211,33 @@ public class DefaultFilterInvocationSecurityMetadataSourceTests {
 
         response = fids.lookupAttributes(fi.getRequestUrl(), null);
         assertEquals(def, response);
+    }
+
+    /**
+     * CVE-2022-22978. A request path containing a carriage return or line feed must still be
+     * matched by a regular expression pattern, otherwise no attributes are found for it and the
+     * secured URL can be accessed without authorization.
+     */
+    @Test
+    public void regexLookupSucceedsIfUrlContainsLineTerminator() {
+        LinkedHashMap requestMap = new LinkedHashMap();
+        requestMap.put(new RequestKey("/secure/.*"), def);
+        fids = new DefaultFilterInvocationSecurityMetadataSource(new RegexUrlPathMatcher(), requestMap);
+        fids.setStripQueryStringFromUrls(true);
+
+        assertEquals(def, fids.lookupAttributes(createFilterInvocation("/secure/super/file.html\n", null).getRequestUrl(), null));
+        assertEquals(def, fids.lookupAttributes(createFilterInvocation("/secure/super/file.html\r", null).getRequestUrl(), null));
+        assertEquals(def, fids.lookupAttributes(createFilterInvocation("/secure/super/file.html\r\n/x", null).getRequestUrl(), null));
+    }
+
+    @Test
+    public void regexLookupStillFailsForNonMatchingUrl() {
+        LinkedHashMap requestMap = new LinkedHashMap();
+        requestMap.put(new RequestKey("/secure/.*"), def);
+        fids = new DefaultFilterInvocationSecurityMetadataSource(new RegexUrlPathMatcher(), requestMap);
+        fids.setStripQueryStringFromUrls(true);
+
+        assertNull(fids.lookupAttributes(createFilterInvocation("/insecure/file.html", null).getRequestUrl(), null));
     }
 
     private FilterInvocation createFilterInvocation(String path, String method) {
