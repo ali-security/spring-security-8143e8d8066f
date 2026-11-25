@@ -18,13 +18,14 @@ package org.springframework.security.web.util;
 import static org.junit.Assert.*;
 
 import org.junit.Test;
+import org.springframework.expression.spel.SpelEvaluationException;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 /**
  * @author Mike Wiesner
  * @since 3.0.2
  */
-public class ELRequestMatcherTest {
+public class ELRequestMatcherTests {
 
     @Test
     public void testHasIpAddressTrue() throws Exception {
@@ -84,6 +85,65 @@ public class ELRequestMatcherTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
 
         assertFalse(requestMatcher.matches(request));
+    }
+
+    @Test
+    public void testInstanceMethodOnResultIsAllowed() throws Exception {
+        ELRequestMatcher requestMatcher = new ELRequestMatcher("hasHeader('User-Agent','MSIE') and 'MSIE'.length() == 4");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("User-Agent", "MSIE");
+
+        assertTrue(requestMatcher.matches(request));
+    }
+
+    @Test
+    public void testWhenTypeReferenceThenThrowSpelEvaluationException() {
+        ELRequestMatcher requestMatcher = new ELRequestMatcher("T(java.lang.System).getProperty('os.name') != null");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        assertEvaluationFails(requestMatcher, request);
+    }
+
+    @Test
+    public void testWhenMethodNotOnRootObjectThenThrowSpelEvaluationException() {
+        ELRequestMatcher requestMatcher = new ELRequestMatcher("hasIpAddress('1.1.1.1').getClass() != null");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("1.1.1.1");
+
+        assertEvaluationFails(requestMatcher, request);
+    }
+
+    @Test
+    public void testWhenConstructorThenThrowSpelEvaluationException() {
+        ELRequestMatcher requestMatcher = new ELRequestMatcher("new java.io.File('.').exists()");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        assertEvaluationFails(requestMatcher, request);
+    }
+
+    @Test
+    public void testWhenClassPropertyThenThrowSpelEvaluationException() {
+        ELRequestMatcher requestMatcher = new ELRequestMatcher("'MSIE'.class != null");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        assertEvaluationFails(requestMatcher, request);
+    }
+
+    @Test
+    public void testWhenStaticMethodThenThrowSpelEvaluationException() {
+        ELRequestMatcher requestMatcher = new ELRequestMatcher("'MSIE'.valueOf(true) == 'true'");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+
+        assertEvaluationFails(requestMatcher, request);
+    }
+
+    private void assertEvaluationFails(ELRequestMatcher requestMatcher, MockHttpServletRequest request) {
+        try {
+            requestMatcher.matches(request);
+            fail("Expected the expression evaluation to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getCause() instanceof SpelEvaluationException);
+        }
     }
 
 }
